@@ -9,7 +9,7 @@ export default function LoginPage() {
             登录
           </h1>
           <p className="mt-2 text-center text-sm text-gray-600">
-            登录到 Spring FES Video
+            登录到 生视频智能体
           </p>
         </div>
         <div className="mt-8 bg-white px-4 py-8 shadow sm:rounded-lg sm:px-10">

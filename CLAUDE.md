@@ -1,4 +1,4 @@
-# Spring FES Video - Project Instructions
+# 生视频智能体 - Project Instructions
 
 ## Project Context
 

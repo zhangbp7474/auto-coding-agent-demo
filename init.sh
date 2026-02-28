@@ -14,7 +14,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-echo -e "${YELLOW}Initializing Spring FES Video project...${NC}"
+echo -e "${YELLOW}Initializing 生视频智能体 project...${NC}"
 
 # Install dependencies
 echo "Installing dependencies..."

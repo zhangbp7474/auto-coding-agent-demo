@@ -46,11 +46,11 @@ const test = base.extend<MyFixtures, WorkerFixtures>({
   },
 });
 
-test.describe('Spring FES Video - E2E Tests', () => {
+test.describe('生视频智能体 - E2E Tests', () => {
   test('01 - Homepage loads correctly', async ({ page }) => {
     await page.goto(BASE_URL);
     
-    await expect(page).toHaveTitle(/Spring FES Video/);
+    await expect(page).toHaveTitle(/生视频智能体/);
     await expect(page.locator('h1')).toContainText('故事转视频生成平台');
     
     const loginLinks = page.getByRole('link', { name: '登录' });
@@ -119,7 +119,7 @@ test.describe('Spring FES Video - E2E Tests', () => {
   });
 });
 
-test.describe('Spring FES Video - Authenticated Flow', () => {
+test.describe('生视频智能体 - Authenticated Flow', () => {
   test.describe.configure({ mode: 'serial' });
   
   test('01 - Create new project page accessible after login', async ({ authPage }) => {

@@ -9,7 +9,7 @@ export default function RegisterPage() {
             注册
           </h1>
           <p className="mt-2 text-center text-sm text-gray-600">
-            创建 Spring FES Video 账号
+            创建 生视频智能体 账号
           </p>
         </div>
         <div className="mt-8 bg-white px-4 py-8 shadow sm:rounded-lg sm:px-10">

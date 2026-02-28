@@ -33,7 +33,7 @@ export function Header({ user }: HeaderProps) {
             href="/"
             className="text-lg font-semibold text-zinc-900 dark:text-zinc-100"
           >
-            Spring FES Video
+            生视频智能体
           </Link>
 
           {/* Desktop Navigation */}

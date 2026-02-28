@@ -1,4 +1,4 @@
--- Spring FES Video - Initial Database Schema
+-- 生视频智能体 - Initial Database Schema
 -- Migration: 001_initial_schema
 -- Description: Creates all tables, indexes, foreign keys, and storage bucket
 

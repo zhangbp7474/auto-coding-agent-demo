@@ -66,7 +66,7 @@ function sleep(ms) {
 
 async function runDemo() {
   console.log('\n' + '═'.repeat(70));
-  console.log('   🎬 Spring FES Video - 故事转视频生成平台 - 功能演示');
+  console.log('   🎬 生视频智能体 - 故事转视频生成平台 - 功能演示');
   console.log('═'.repeat(70));
   
   let projectId = null;
