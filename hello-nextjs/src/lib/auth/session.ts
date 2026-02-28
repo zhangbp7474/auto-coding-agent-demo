@@ -19,7 +19,7 @@ export async function getSession(): Promise<AuthSession> {
       return { user: null, userId: null };
     }
 
-    const payload = verifyToken(token);
+    const payload = await verifyToken(token);
     const user = await getUserById(payload.userId);
 
     if (!user) {

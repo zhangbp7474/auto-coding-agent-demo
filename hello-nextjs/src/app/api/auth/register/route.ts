@@ -46,7 +46,7 @@ export async function POST(request: Request) {
     const passwordHash = await hashPassword(password);
     const user = await createUser(email, passwordHash, name);
 
-    const token = signToken({
+    const token = await signToken({
       userId: user.id,
       email: user.email,
     });

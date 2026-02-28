@@ -1,4 +1,5 @@
 import { getJwtConfig } from "@/lib/config";
+import { SignJWT, jwtVerify } from "jose";
 
 export interface JwtPayload {
   userId: string;
@@ -9,34 +10,49 @@ export interface JwtPayload {
   aud?: string;
 }
 
-export function signToken(payload: Omit<JwtPayload, "iat" | "exp" | "iss" | "aud">): string {
+function getSecretKey(): Uint8Array {
   const config = getJwtConfig();
   const secret = process.env.JWT_SECRET || config.secret;
-  
-  const jwt = require("jsonwebtoken");
-  return jwt.sign(payload, secret, {
-    expiresIn: config.expires_in,
-    issuer: config.issuer,
-    audience: config.audience,
-  });
+  return new TextEncoder().encode(secret);
 }
 
-export function verifyToken(token: string): JwtPayload {
+export async function signToken(payload: Omit<JwtPayload, "iat" | "exp" | "iss" | "aud">): Promise<string> {
   const config = getJwtConfig();
-  const secret = process.env.JWT_SECRET || config.secret;
+  const secretKey = getSecretKey();
   
-  const jwt = require("jsonwebtoken");
+  const jwt = await new SignJWT({ 
+    userId: payload.userId, 
+    email: payload.email 
+  })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(config.expires_in)
+    .setIssuer(config.issuer)
+    .setAudience(config.audience)
+    .sign(secretKey);
+  
+  return jwt;
+}
+
+export async function verifyToken(token: string): Promise<JwtPayload> {
+  const config = getJwtConfig();
+  const secretKey = getSecretKey();
+  
   try {
-    return jwt.verify(token, secret, {
+    const { payload } = await jwtVerify(token, secretKey, {
       issuer: config.issuer,
       audience: config.audience,
-    }) as JwtPayload;
+    });
+    
+    return payload as unknown as JwtPayload;
   } catch (error) {
-    if (error instanceof Error && error.name === "TokenExpiredError") {
-      throw new Error("Token expired");
-    }
-    if (error instanceof Error && error.name === "JsonWebTokenError") {
-      throw new Error("Invalid token");
+    if (error instanceof Error) {
+      if (error.message.includes("expired")) {
+        throw new Error("Token expired");
+      }
+      if (error.message.includes("invalid")) {
+        throw new Error("Invalid token");
+      }
     }
     throw error;
   }
@@ -44,8 +60,12 @@ export function verifyToken(token: string): JwtPayload {
 
 export function decodeToken(token: string): JwtPayload | null {
   try {
-    const jwt = require("jsonwebtoken");
-    return jwt.decode(token) as JwtPayload;
+    const parts = token.split(".");
+    if (parts.length !== 3) {
+      return null;
+    }
+    const payload = JSON.parse(atob(parts[1]));
+    return payload as JwtPayload;
   } catch {
     return null;
   }

@@ -45,7 +45,7 @@ export async function POST(request: Request) {
 
     await updateLastLogin(user.id);
 
-    const token = signToken({
+    const token = await signToken({
       userId: user.id,
       email: user.email,
     });

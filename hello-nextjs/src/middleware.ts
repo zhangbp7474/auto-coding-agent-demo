@@ -15,7 +15,7 @@ export async function getAuthUser(request: NextRequest): Promise<AuthUser | null
   }
 
   try {
-    const payload = verifyToken(token);
+    const payload = await verifyToken(token);
     return {
       userId: payload.userId,
       email: payload.email,

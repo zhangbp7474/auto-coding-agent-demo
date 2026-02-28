@@ -3,6 +3,8 @@ import { CreateProjectForm } from "@/components/project/CreateProjectForm";
 import { getCurrentUser } from "@/lib/auth/session";
 import { redirect } from "next/navigation";
 
+export const dynamic = "force-dynamic";
+
 export default async function CreatePage() {
   const user = await getCurrentUser();
 

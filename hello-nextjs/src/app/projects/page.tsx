@@ -5,6 +5,8 @@ import { getProjectsWithPreview } from "@/lib/db/projects-list";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 
+export const dynamic = "force-dynamic";
+
 interface ProjectsPageProps {
   searchParams: Promise<{
     page?: string;
