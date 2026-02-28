@@ -1,5 +1,5 @@
-import { query } from "./client";
-import type { Scene, SceneInsert, SceneWithMedia, Image, Video } from "@/types/database";
+import { query, generateId } from "./client";
+import type { Scene, SceneWithMedia, Image, Video } from "@/types/database";
 
 export class SceneError extends Error {
   constructor(
@@ -11,6 +11,29 @@ export class SceneError extends Error {
   }
 }
 
+export async function createScene(data: {
+  projectId: string;
+  orderIndex: number;
+  description: string;
+}): Promise<Scene> {
+  const id = generateId();
+  await query(
+    `INSERT INTO scenes (id, project_id, order_index, description, description_confirmed, image_status, image_confirmed, video_status, video_confirmed) VALUES (?, ?, ?, ?, 0, 'pending', 0, 'pending', 0)`,
+    [id, data.projectId, data.orderIndex, data.description]
+  );
+
+  const result = await query<Scene>(
+    `SELECT * FROM scenes WHERE id = ?`,
+    [id]
+  );
+
+  if (!result.rows[0]) {
+    throw new SceneError("Failed to create scene", "database_error");
+  }
+
+  return result.rows[0];
+}
+
 export async function createScenes(
   projectId: string,
   scenes: Array<{
@@ -20,34 +43,23 @@ export async function createScenes(
 ): Promise<Scene[]> {
   if (scenes.length === 0) return [];
 
-  const values = scenes
-    .map((scene, i) => `($1, $${i * 6 + 2}, $${i * 6 + 3}, $${i * 6 + 4}, $${i * 6 + 5}, $${i * 6 + 6}, $${i * 6 + 7}, $${i * 6 + 8})`)
-    .join(", ");
+  const createdScenes: Scene[] = [];
+  
+  for (const scene of scenes) {
+    const created = await createScene({
+      projectId,
+      orderIndex: scene.order_index,
+      description: scene.description,
+    });
+    createdScenes.push(created);
+  }
 
-  const params: unknown[] = [projectId];
-  scenes.forEach((scene) => {
-    params.push(
-      scene.order_index,
-      scene.description,
-      false,
-      "pending",
-      false,
-      "pending",
-      false
-    );
-  });
-
-  const result = await query<Scene>(
-    `INSERT INTO scenes (project_id, order_index, description, description_confirmed, image_status, image_confirmed, video_status, video_confirmed) VALUES ${values} RETURNING *`,
-    params
-  );
-
-  return result.rows;
+  return createdScenes;
 }
 
 export async function getScenesByProjectId(projectId: string): Promise<Scene[]> {
   const result = await query<Scene>(
-    `SELECT * FROM scenes WHERE project_id = $1 ORDER BY order_index ASC`,
+    `SELECT * FROM scenes WHERE project_id = ? ORDER BY order_index ASC`,
     [projectId]
   );
   return result.rows;
@@ -57,7 +69,7 @@ export async function getScenesWithMediaByProjectId(
   projectId: string
 ): Promise<SceneWithMedia[]> {
   const scenesResult = await query<Scene>(
-    `SELECT * FROM scenes WHERE project_id = $1 ORDER BY order_index ASC`,
+    `SELECT * FROM scenes WHERE project_id = ? ORDER BY order_index ASC`,
     [projectId]
   );
 
@@ -67,13 +79,21 @@ export async function getScenesWithMediaByProjectId(
 
   const sceneIds = scenesResult.rows.map((s) => s.id);
 
-  const [imagesResult, videosResult] = await Promise.all([
-    query<Image>(`SELECT * FROM images WHERE scene_id = ANY($1)`, [sceneIds]),
-    query<Video>(`SELECT * FROM videos WHERE scene_id = ANY($1)`, [sceneIds]),
-  ]);
+  const placeholders = sceneIds.map(() => "?").join(",");
+  const imagesResult = await query<Image>(
+    `SELECT * FROM images WHERE scene_id IN (${placeholders})`,
+    sceneIds
+  );
+  const videosResult = await query<Video>(
+    `SELECT * FROM videos WHERE scene_id IN (${placeholders})`,
+    sceneIds
+  );
 
   return scenesResult.rows.map((scene) => ({
     ...scene,
+    description_confirmed: Boolean((scene as unknown as { description_confirmed: number }).description_confirmed),
+    image_confirmed: Boolean((scene as unknown as { image_confirmed: number }).image_confirmed),
+    video_confirmed: Boolean((scene as unknown as { video_confirmed: number }).video_confirmed),
     images: imagesResult.rows.filter((img) => img.scene_id === scene.id),
     videos: videosResult.rows.filter((vid) => vid.scene_id === scene.id),
   }));
@@ -81,7 +101,7 @@ export async function getScenesWithMediaByProjectId(
 
 export async function getSceneById(sceneId: string): Promise<Scene> {
   const result = await query<Scene>(
-    `SELECT * FROM scenes WHERE id = $1`,
+    `SELECT * FROM scenes WHERE id = ?`,
     [sceneId]
   );
 
@@ -96,9 +116,14 @@ export async function updateSceneDescription(
   sceneId: string,
   description: string
 ): Promise<Scene> {
-  const result = await query<Scene>(
-    `UPDATE scenes SET description = $1 WHERE id = $2 RETURNING *`,
+  await query(
+    `UPDATE scenes SET description = ? WHERE id = ?`,
     [description, sceneId]
+  );
+
+  const result = await query<Scene>(
+    `SELECT * FROM scenes WHERE id = ?`,
+    [sceneId]
   );
 
   if (result.rows.length === 0) {
@@ -109,8 +134,13 @@ export async function updateSceneDescription(
 }
 
 export async function confirmSceneDescription(sceneId: string): Promise<Scene> {
+  await query(
+    `UPDATE scenes SET description_confirmed = 1 WHERE id = ?`,
+    [sceneId]
+  );
+
   const result = await query<Scene>(
-    `UPDATE scenes SET description_confirmed = true WHERE id = $1 RETURNING *`,
+    `SELECT * FROM scenes WHERE id = ?`,
     [sceneId]
   );
 
@@ -123,12 +153,12 @@ export async function confirmSceneDescription(sceneId: string): Promise<Scene> {
 
 export async function confirmAllDescriptions(projectId: string): Promise<number> {
   const result = await query(
-    `UPDATE scenes SET description_confirmed = true WHERE project_id = $1`,
+    `UPDATE scenes SET description_confirmed = 1 WHERE project_id = ?`,
     [projectId]
   );
 
   await query(
-    `UPDATE projects SET stage = 'images', updated_at = NOW() WHERE id = $1`,
+    `UPDATE projects SET stage = 'images', updated_at = datetime('now') WHERE id = ?`,
     [projectId]
   );
 
@@ -139,9 +169,14 @@ export async function updateSceneImageStatus(
   sceneId: string,
   status: "pending" | "processing" | "completed" | "failed"
 ): Promise<Scene> {
-  const result = await query<Scene>(
-    `UPDATE scenes SET image_status = $1 WHERE id = $2 RETURNING *`,
+  await query(
+    `UPDATE scenes SET image_status = ? WHERE id = ?`,
     [status, sceneId]
+  );
+
+  const result = await query<Scene>(
+    `SELECT * FROM scenes WHERE id = ?`,
+    [sceneId]
   );
 
   if (result.rows.length === 0) {
@@ -152,8 +187,13 @@ export async function updateSceneImageStatus(
 }
 
 export async function confirmSceneImage(sceneId: string): Promise<Scene> {
+  await query(
+    `UPDATE scenes SET image_confirmed = 1 WHERE id = ?`,
+    [sceneId]
+  );
+
   const result = await query<Scene>(
-    `UPDATE scenes SET image_confirmed = true WHERE id = $1 RETURNING *`,
+    `SELECT * FROM scenes WHERE id = ?`,
     [sceneId]
   );
 
@@ -166,12 +206,12 @@ export async function confirmSceneImage(sceneId: string): Promise<Scene> {
 
 export async function confirmAllImages(projectId: string): Promise<number> {
   const result = await query(
-    `UPDATE scenes SET image_confirmed = true WHERE project_id = $1 AND image_status = 'completed'`,
+    `UPDATE scenes SET image_confirmed = 1 WHERE project_id = ? AND image_status = 'completed'`,
     [projectId]
   );
 
   await query(
-    `UPDATE projects SET stage = 'videos', updated_at = NOW() WHERE id = $1`,
+    `UPDATE projects SET stage = 'videos', updated_at = datetime('now') WHERE id = ?`,
     [projectId]
   );
 
@@ -182,9 +222,14 @@ export async function updateSceneVideoStatus(
   sceneId: string,
   status: "pending" | "processing" | "completed" | "failed"
 ): Promise<Scene> {
-  const result = await query<Scene>(
-    `UPDATE scenes SET video_status = $1 WHERE id = $2 RETURNING *`,
+  await query(
+    `UPDATE scenes SET video_status = ? WHERE id = ?`,
     [status, sceneId]
+  );
+
+  const result = await query<Scene>(
+    `SELECT * FROM scenes WHERE id = ?`,
+    [sceneId]
   );
 
   if (result.rows.length === 0) {
@@ -195,8 +240,13 @@ export async function updateSceneVideoStatus(
 }
 
 export async function confirmSceneVideo(sceneId: string): Promise<Scene> {
+  await query(
+    `UPDATE scenes SET video_confirmed = 1 WHERE id = ?`,
+    [sceneId]
+  );
+
   const result = await query<Scene>(
-    `UPDATE scenes SET video_confirmed = true WHERE id = $1 RETURNING *`,
+    `SELECT * FROM scenes WHERE id = ?`,
     [sceneId]
   );
 
@@ -209,12 +259,12 @@ export async function confirmSceneVideo(sceneId: string): Promise<Scene> {
 
 export async function confirmAllVideos(projectId: string): Promise<number> {
   const result = await query(
-    `UPDATE scenes SET video_confirmed = true WHERE project_id = $1 AND video_status = 'completed'`,
+    `UPDATE scenes SET video_confirmed = 1 WHERE project_id = ? AND video_status = 'completed'`,
     [projectId]
   );
 
   await query(
-    `UPDATE projects SET stage = 'completed', updated_at = NOW() WHERE id = $1`,
+    `UPDATE projects SET stage = 'completed', updated_at = datetime('now') WHERE id = ?`,
     [projectId]
   );
 
@@ -222,21 +272,26 @@ export async function confirmAllVideos(projectId: string): Promise<number> {
 }
 
 export async function deleteScenesByProjectId(projectId: string): Promise<number> {
-  const countResult = await query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM scenes WHERE project_id = $1`,
+  const countResult = await query<{ count: number }>(
+    `SELECT COUNT(*) as count FROM scenes WHERE project_id = ?`,
     [projectId]
   );
 
-  const count = parseInt(countResult.rows[0]?.count ?? "0", 10);
+  const count = countResult.rows[0]?.count ?? 0;
 
-  await query(`DELETE FROM scenes WHERE project_id = $1`, [projectId]);
+  await query(`DELETE FROM scenes WHERE project_id = ?`, [projectId]);
 
   return count;
 }
 
 export async function resetSceneImageStatus(sceneId: string): Promise<Scene> {
+  await query(
+    `UPDATE scenes SET image_status = 'pending', image_confirmed = 0 WHERE id = ?`,
+    [sceneId]
+  );
+
   const result = await query<Scene>(
-    `UPDATE scenes SET image_status = 'pending', image_confirmed = false WHERE id = $1 RETURNING *`,
+    `SELECT * FROM scenes WHERE id = ?`,
     [sceneId]
   );
 
@@ -248,8 +303,13 @@ export async function resetSceneImageStatus(sceneId: string): Promise<Scene> {
 }
 
 export async function resetSceneVideoStatus(sceneId: string): Promise<Scene> {
+  await query(
+    `UPDATE scenes SET video_status = 'pending', video_confirmed = 0 WHERE id = ?`,
+    [sceneId]
+  );
+
   const result = await query<Scene>(
-    `UPDATE scenes SET video_status = 'pending', video_confirmed = false WHERE id = $1 RETURNING *`,
+    `SELECT * FROM scenes WHERE id = ?`,
     [sceneId]
   );
 
@@ -261,25 +321,25 @@ export async function resetSceneVideoStatus(sceneId: string): Promise<Scene> {
 }
 
 export async function getConfirmedDescriptionCount(projectId: string): Promise<number> {
-  const result = await query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM scenes WHERE project_id = $1 AND description_confirmed = true`,
+  const result = await query<{ count: number }>(
+    `SELECT COUNT(*) as count FROM scenes WHERE project_id = ? AND description_confirmed = 1`,
     [projectId]
   );
-  return parseInt(result.rows[0]?.count ?? "0", 10);
+  return result.rows[0]?.count ?? 0;
 }
 
 export async function getCompletedImageCount(projectId: string): Promise<number> {
-  const result = await query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM scenes WHERE project_id = $1 AND image_status = 'completed'`,
+  const result = await query<{ count: number }>(
+    `SELECT COUNT(*) as count FROM scenes WHERE project_id = ? AND image_status = 'completed'`,
     [projectId]
   );
-  return parseInt(result.rows[0]?.count ?? "0", 10);
+  return result.rows[0]?.count ?? 0;
 }
 
 export async function getCompletedVideoCount(projectId: string): Promise<number> {
-  const result = await query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM scenes WHERE project_id = $1 AND video_status = 'completed'`,
+  const result = await query<{ count: number }>(
+    `SELECT COUNT(*) as count FROM scenes WHERE project_id = ? AND video_status = 'completed'`,
     [projectId]
   );
-  return parseInt(result.rows[0]?.count ?? "0", 10);
+  return result.rows[0]?.count ?? 0;
 }

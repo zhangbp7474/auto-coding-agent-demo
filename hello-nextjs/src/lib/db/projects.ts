@@ -1,4 +1,4 @@
-import { query } from "./client";
+import { query, generateId } from "./client";
 import type {
   Project,
   ProjectInsert,
@@ -25,9 +25,16 @@ export async function createProject(
   story?: string,
   style?: string
 ): Promise<Project> {
+  const id = generateId();
+  
+  await query(
+    `INSERT INTO projects (id, user_id, title, story, style, stage) VALUES (?, ?, ?, ?, ?, ?)`,
+    [id, userId, title, story ?? null, style ?? "default", "draft"]
+  );
+  
   const result = await query<Project>(
-    `INSERT INTO projects (user_id, title, story, style, stage) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-    [userId, title, story ?? null, style ?? "default", "draft"]
+    `SELECT * FROM projects WHERE id = ?`,
+    [id]
   );
   return result.rows[0];
 }
@@ -43,14 +50,14 @@ export async function getProjects(
   const limit = options.limit ?? 20;
   const offset = (page - 1) * limit;
 
-  const countResult = await query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM projects WHERE user_id = $1`,
+  const countResult = await query<{ count: number }>(
+    `SELECT COUNT(*) as count FROM projects WHERE user_id = ?`,
     [userId]
   );
-  const total = parseInt(countResult.rows[0]?.count ?? "0", 10);
+  const total = countResult.rows[0]?.count ?? 0;
 
   const result = await query<Project>(
-    `SELECT * FROM projects WHERE user_id = $1 ORDER BY updated_at DESC LIMIT $2 OFFSET $3`,
+    `SELECT * FROM projects WHERE user_id = ? ORDER BY updated_at DESC LIMIT ? OFFSET ?`,
     [userId, limit, offset]
   );
 
@@ -65,7 +72,7 @@ export async function getProjectById(
   userId: string
 ): Promise<ProjectWithScenes> {
   const projectResult = await query<Project>(
-    `SELECT * FROM projects WHERE id = $1 AND user_id = $2`,
+    `SELECT * FROM projects WHERE id = ? AND user_id = ?`,
     [projectId, userId]
   );
 
@@ -80,30 +87,39 @@ export async function getProjectById(
     project_id: string;
     order_index: number;
     description: string;
-    description_confirmed: boolean;
+    description_confirmed: number;
     image_status: string;
-    image_confirmed: boolean;
+    image_confirmed: number;
     video_status: string;
-    video_confirmed: boolean;
+    video_confirmed: number;
     created_at: string;
   }>(
-    `SELECT * FROM scenes WHERE project_id = $1 ORDER BY order_index ASC`,
+    `SELECT * FROM scenes WHERE project_id = ? ORDER BY order_index ASC`,
     [projectId]
   );
 
   const sceneIds = scenesResult.rows.map((s) => s.id);
 
-  const [imagesResult, videosResult] = await Promise.all([
-    sceneIds.length > 0
-      ? query<Image>(`SELECT * FROM images WHERE scene_id = ANY($1)`, [sceneIds])
-      : { rows: [] },
-    sceneIds.length > 0
-      ? query<Video>(`SELECT * FROM videos WHERE scene_id = ANY($1)`, [sceneIds])
-      : { rows: [] },
-  ]);
+  let imagesResult = { rows: [] as Image[] };
+  let videosResult = { rows: [] as Video[] };
+  
+  if (sceneIds.length > 0) {
+    const placeholders = sceneIds.map(() => "?").join(",");
+    imagesResult = await query<Image>(
+      `SELECT * FROM images WHERE scene_id IN (${placeholders})`,
+      sceneIds
+    );
+    videosResult = await query<Video>(
+      `SELECT * FROM videos WHERE scene_id IN (${placeholders})`,
+      sceneIds
+    );
+  }
 
   const scenesWithMedia = scenesResult.rows.map((scene) => ({
     ...scene,
+    description_confirmed: Boolean(scene.description_confirmed),
+    image_confirmed: Boolean(scene.image_confirmed),
+    video_confirmed: Boolean(scene.video_confirmed),
     image_status: scene.image_status as "pending" | "processing" | "completed" | "failed",
     video_status: scene.video_status as "pending" | "processing" | "completed" | "failed",
     images: imagesResult.rows.filter((img) => img.scene_id === scene.id),
@@ -127,7 +143,7 @@ export async function updateProject(
   }
 ): Promise<Project> {
   const existingResult = await query<{ user_id: string }>(
-    `SELECT user_id FROM projects WHERE id = $1`,
+    `SELECT user_id FROM projects WHERE id = ?`,
     [projectId]
   );
 
@@ -141,37 +157,43 @@ export async function updateProject(
 
   const fields: string[] = [];
   const values: unknown[] = [];
-  let paramIndex = 1;
 
   if (updates.title !== undefined) {
-    fields.push(`title = $${paramIndex++}`);
+    fields.push("title = ?");
     values.push(updates.title);
   }
   if (updates.story !== undefined) {
-    fields.push(`story = $${paramIndex++}`);
+    fields.push("story = ?");
     values.push(updates.story);
   }
   if (updates.style !== undefined) {
-    fields.push(`style = $${paramIndex++}`);
+    fields.push("style = ?");
     values.push(updates.style);
   }
   if (updates.stage !== undefined) {
-    fields.push(`stage = $${paramIndex++}`);
+    fields.push("stage = ?");
     values.push(updates.stage);
   }
 
   if (fields.length === 0) {
     const result = await query<Project>(
-      `SELECT * FROM projects WHERE id = $1`,
+      `SELECT * FROM projects WHERE id = ?`,
       [projectId]
     );
     return result.rows[0];
   }
 
+  fields.push("updated_at = datetime('now')");
   values.push(projectId);
-  const result = await query<Project>(
-    `UPDATE projects SET ${fields.join(", ")}, updated_at = NOW() WHERE id = $${paramIndex} RETURNING *`,
+  
+  await query(
+    `UPDATE projects SET ${fields.join(", ")} WHERE id = ?`,
     values
+  );
+
+  const result = await query<Project>(
+    `SELECT * FROM projects WHERE id = ?`,
+    [projectId]
   );
 
   return result.rows[0];
@@ -189,22 +211,20 @@ export async function deleteProject(
   projectId: string,
   userId: string
 ): Promise<void> {
-  const existingResult = query<{ user_id: string }>(
-    `SELECT user_id FROM projects WHERE id = $1`,
+  const existingResult = await query<{ user_id: string }>(
+    `SELECT user_id FROM projects WHERE id = ?`,
     [projectId]
   );
 
-  const existing = (await existingResult).rows[0];
-
-  if (!existing) {
+  if (existingResult.rows.length === 0) {
     throw new ProjectError("Project not found", "not_found");
   }
 
-  if (existing.user_id !== userId) {
+  if (existingResult.rows[0].user_id !== userId) {
     throw new ProjectError("Unauthorized to delete this project", "unauthorized");
   }
 
-  await query(`DELETE FROM projects WHERE id = $1`, [projectId]);
+  await query(`DELETE FROM projects WHERE id = ?`, [projectId]);
 }
 
 export async function isProjectOwner(
@@ -212,7 +232,7 @@ export async function isProjectOwner(
   userId: string
 ): Promise<boolean> {
   const result = await query<{ user_id: string }>(
-    `SELECT user_id FROM projects WHERE id = $1`,
+    `SELECT user_id FROM projects WHERE id = ?`,
     [projectId]
   );
 

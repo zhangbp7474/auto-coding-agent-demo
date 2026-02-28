@@ -1,4 +1,4 @@
-import { query } from "./client";
+import { query, generateId } from "./client";
 import { saveFile, generateFilename } from "../storage/local";
 import { getAppConfig } from "../config";
 import type { Image, Video } from "@/types/database";
@@ -31,9 +31,16 @@ export async function createImage(
     imageData
   );
 
+  const id = generateId();
+  
+  await query(
+    `INSERT INTO images (id, scene_id, storage_path, url, width, height, version) VALUES (?, ?, ?, ?, ?, ?, 1)`,
+    [id, sceneId, storagePath, url, options.width ?? null, options.height ?? null]
+  );
+
   const result = await query<Image>(
-    `INSERT INTO images (scene_id, storage_path, url, width, height, version) VALUES ($1, $2, $3, $4, $5, 1) RETURNING *`,
-    [sceneId, storagePath, url, options.width ?? null, options.height ?? null]
+    `SELECT * FROM images WHERE id = ?`,
+    [id]
   );
 
   return result.rows[0];
@@ -41,7 +48,7 @@ export async function createImage(
 
 export async function getImagesBySceneId(sceneId: string): Promise<Image[]> {
   const result = await query<Image>(
-    `SELECT * FROM images WHERE scene_id = $1 ORDER BY version DESC`,
+    `SELECT * FROM images WHERE scene_id = ? ORDER BY version DESC`,
     [sceneId]
   );
   return result.rows;
@@ -49,7 +56,7 @@ export async function getImagesBySceneId(sceneId: string): Promise<Image[]> {
 
 export async function getLatestImageBySceneId(sceneId: string): Promise<Image | null> {
   const result = await query<Image>(
-    `SELECT * FROM images WHERE scene_id = $1 ORDER BY version DESC LIMIT 1`,
+    `SELECT * FROM images WHERE scene_id = ? ORDER BY version DESC LIMIT 1`,
     [sceneId]
   );
 
@@ -62,7 +69,7 @@ export async function getLatestImageBySceneId(sceneId: string): Promise<Image | 
 
 export async function getImageById(imageId: string): Promise<Image> {
   const result = await query<Image>(
-    `SELECT * FROM images WHERE id = $1`,
+    `SELECT * FROM images WHERE id = ?`,
     [imageId]
   );
 
@@ -74,14 +81,14 @@ export async function getImageById(imageId: string): Promise<Image> {
 }
 
 export async function deleteImagesBySceneId(sceneId: string): Promise<number> {
-  const countResult = await query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM images WHERE scene_id = $1`,
+  const countResult = await query<{ count: number }>(
+    `SELECT COUNT(*) as count FROM images WHERE scene_id = ?`,
     [sceneId]
   );
 
-  const count = parseInt(countResult.rows[0]?.count ?? "0", 10);
+  const count = countResult.rows[0]?.count ?? 0;
 
-  await query(`DELETE FROM images WHERE scene_id = $1`, [sceneId]);
+  await query(`DELETE FROM images WHERE scene_id = ?`, [sceneId]);
 
   return count;
 }
@@ -104,9 +111,16 @@ export async function createVideo(
     videoData
   );
 
+  const id = generateId();
+  
+  await query(
+    `INSERT INTO videos (id, scene_id, storage_path, url, duration, task_id, version) VALUES (?, ?, ?, ?, ?, ?, 1)`,
+    [id, sceneId, storagePath, url, options.duration ?? null, options.taskId ?? null]
+  );
+
   const result = await query<Video>(
-    `INSERT INTO videos (scene_id, storage_path, url, duration, task_id, version) VALUES ($1, $2, $3, $4, $5, 1) RETURNING *`,
-    [sceneId, storagePath, url, options.duration ?? null, options.taskId ?? null]
+    `SELECT * FROM videos WHERE id = ?`,
+    [id]
   );
 
   return result.rows[0];
@@ -116,9 +130,16 @@ export async function createProcessingVideo(
   sceneId: string,
   taskId: string
 ): Promise<Video> {
+  const id = generateId();
+  
+  await query(
+    `INSERT INTO videos (id, scene_id, storage_path, url, duration, task_id, version) VALUES (?, ?, '', '', NULL, ?, 1)`,
+    [id, sceneId, taskId]
+  );
+
   const result = await query<Video>(
-    `INSERT INTO videos (scene_id, storage_path, url, duration, task_id, version) VALUES ($1, '', '', NULL, $2, 1) RETURNING *`,
-    [sceneId, taskId]
+    `SELECT * FROM videos WHERE id = ?`,
+    [id]
   );
 
   return result.rows[0];
@@ -128,9 +149,14 @@ export async function updateVideoTaskId(
   videoId: string,
   taskId: string
 ): Promise<Video> {
-  const result = await query<Video>(
-    `UPDATE videos SET task_id = $1 WHERE id = $2 RETURNING *`,
+  await query(
+    `UPDATE videos SET task_id = ? WHERE id = ?`,
     [taskId, videoId]
+  );
+
+  const result = await query<Video>(
+    `SELECT * FROM videos WHERE id = ?`,
+    [videoId]
   );
 
   if (result.rows.length === 0) {
@@ -148,9 +174,14 @@ export async function updateCompletedVideo(
     duration?: number;
   } = {}
 ): Promise<Video> {
-  const result = await query<Video>(
-    `UPDATE videos SET storage_path = $1, url = $2, duration = $3 WHERE id = $4 RETURNING *`,
+  await query(
+    `UPDATE videos SET storage_path = ?, url = ?, duration = ? WHERE id = ?`,
     [storagePath, url, options.duration ?? null, videoId]
+  );
+
+  const result = await query<Video>(
+    `SELECT * FROM videos WHERE id = ?`,
+    [videoId]
   );
 
   if (result.rows.length === 0) {
@@ -162,7 +193,7 @@ export async function updateCompletedVideo(
 
 export async function getVideosBySceneId(sceneId: string): Promise<Video[]> {
   const result = await query<Video>(
-    `SELECT * FROM videos WHERE scene_id = $1 ORDER BY version DESC`,
+    `SELECT * FROM videos WHERE scene_id = ? ORDER BY version DESC`,
     [sceneId]
   );
   return result.rows;
@@ -170,7 +201,7 @@ export async function getVideosBySceneId(sceneId: string): Promise<Video[]> {
 
 export async function getLatestVideoBySceneId(sceneId: string): Promise<Video | null> {
   const result = await query<Video>(
-    `SELECT * FROM videos WHERE scene_id = $1 ORDER BY version DESC LIMIT 1`,
+    `SELECT * FROM videos WHERE scene_id = ? ORDER BY version DESC LIMIT 1`,
     [sceneId]
   );
 
@@ -183,7 +214,7 @@ export async function getLatestVideoBySceneId(sceneId: string): Promise<Video | 
 
 export async function getVideoById(videoId: string): Promise<Video> {
   const result = await query<Video>(
-    `SELECT * FROM videos WHERE id = $1`,
+    `SELECT * FROM videos WHERE id = ?`,
     [videoId]
   );
 
@@ -195,14 +226,14 @@ export async function getVideoById(videoId: string): Promise<Video> {
 }
 
 export async function deleteVideosBySceneId(sceneId: string): Promise<number> {
-  const countResult = await query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM videos WHERE scene_id = $1`,
+  const countResult = await query<{ count: number }>(
+    `SELECT COUNT(*) as count FROM videos WHERE scene_id = ?`,
     [sceneId]
   );
 
-  const count = parseInt(countResult.rows[0]?.count ?? "0", 10);
+  const count = countResult.rows[0]?.count ?? 0;
 
-  await query(`DELETE FROM videos WHERE scene_id = $1`, [sceneId]);
+  await query(`DELETE FROM videos WHERE scene_id = ?`, [sceneId]);
 
   return count;
 }

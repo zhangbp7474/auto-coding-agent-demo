@@ -17,14 +17,14 @@ export async function getProjectsWithPreview(
   const limit = options.limit ?? 20;
   const offset = (page - 1) * limit;
 
-  const countResult = await query<{ count: string }>(
-    `SELECT COUNT(*) as count FROM projects WHERE user_id = $1`,
+  const countResult = await query<{ count: number }>(
+    `SELECT COUNT(*) as count FROM projects WHERE user_id = ?`,
     [userId]
   );
-  const total = parseInt(countResult.rows[0]?.count ?? "0", 10);
+  const total = countResult.rows[0]?.count ?? 0;
 
   const projectsResult = await query<Project>(
-    `SELECT * FROM projects WHERE user_id = $1 ORDER BY updated_at DESC LIMIT $2 OFFSET $3`,
+    `SELECT * FROM projects WHERE user_id = ? ORDER BY updated_at DESC LIMIT ? OFFSET ?`,
     [userId, limit, offset]
   );
 
@@ -39,46 +39,53 @@ export async function getProjectsWithPreview(
 
   const projectIds = projects.map((p) => p.id);
 
+  const placeholders = projectIds.map(() => "?").join(",");
+  
   const sceneCountsResult = await query<{
     project_id: string;
-    count: string;
+    count: number;
   }>(
-    `SELECT project_id, COUNT(*) as count FROM scenes WHERE project_id = ANY($1) GROUP BY project_id`,
-    [projectIds]
+    `SELECT project_id, COUNT(*) as count FROM scenes WHERE project_id IN (${placeholders}) GROUP BY project_id`,
+    projectIds
   );
 
   const sceneCountMap = new Map<string, number>();
   sceneCountsResult.rows.forEach((row) => {
-    sceneCountMap.set(row.project_id, parseInt(row.count, 10));
+    sceneCountMap.set(row.project_id, row.count);
   });
 
   const firstScenesResult = await query<{
     id: string;
     project_id: string;
   }>(
-    `SELECT DISTINCT ON (project_id) id, project_id FROM scenes WHERE project_id = ANY($1) ORDER BY project_id, order_index ASC`,
-    [projectIds]
+    `SELECT id, project_id FROM scenes WHERE project_id IN (${placeholders}) GROUP BY project_id ORDER BY order_index ASC`,
+    projectIds
   );
 
   const firstSceneMap = new Map<string, string>();
   firstScenesResult.rows.forEach((scene) => {
-    firstSceneMap.set(scene.project_id, scene.id);
+    if (!firstSceneMap.has(scene.project_id)) {
+      firstSceneMap.set(scene.project_id, scene.id);
+    }
   });
 
   const firstSceneIds = Array.from(firstSceneMap.values());
 
-  let previewImageMap = new Map<string, string>();
+  const previewImageMap = new Map<string, string>();
   if (firstSceneIds.length > 0) {
+    const scenePlaceholders = firstSceneIds.map(() => "?").join(",");
     const previewImagesResult = await query<{
       scene_id: string;
       url: string;
     }>(
-      `SELECT DISTINCT ON (scene_id) scene_id, url FROM images WHERE scene_id = ANY($1) ORDER BY scene_id, version DESC`,
-      [firstSceneIds]
+      `SELECT scene_id, url FROM images WHERE scene_id IN (${scenePlaceholders}) GROUP BY scene_id ORDER BY version DESC`,
+      firstSceneIds
     );
 
     previewImagesResult.rows.forEach((row) => {
-      previewImageMap.set(row.scene_id, row.url);
+      if (!previewImageMap.has(row.scene_id)) {
+        previewImageMap.set(row.scene_id, row.url);
+      }
     });
   }
 

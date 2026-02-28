@@ -21,6 +21,7 @@ export interface VolcEngineConfig {
 }
 
 export interface DatabaseConfig {
+  type: "sqlite" | "postgresql";
   host: string;
   port: number;
   name: string;
@@ -29,6 +30,7 @@ export interface DatabaseConfig {
   pool_size: number;
   connection_timeout: number;
   idle_timeout: number;
+  sqlite_db_path: string;
 }
 
 export interface JwtConfig {
@@ -132,6 +134,7 @@ export function getConfig(): Config {
       },
     },
     database: {
+      type: (getEnvString("DB_TYPE", "sqlite") as "sqlite" | "postgresql"),
       host: getEnvString("DB_HOST", "localhost"),
       port: getEnvNumber("DB_PORT", 5432),
       name: getEnvString("DB_NAME", "ai_video_db"),
@@ -140,6 +143,7 @@ export function getConfig(): Config {
       pool_size: getEnvNumber("DB_POOL_SIZE", 10),
       connection_timeout: getEnvNumber("DB_CONNECTION_TIMEOUT", 10000),
       idle_timeout: getEnvNumber("DB_IDLE_TIMEOUT", 30000),
+      sqlite_db_path: getEnvString("SQLITE_DB_PATH", "./storage/dev.db"),
     },
     jwt: {
       secret: getEnvString("JWT_SECRET", ""),

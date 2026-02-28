@@ -1,104 +1,77 @@
-import { Pool, PoolClient, QueryResult, QueryResultRow } from "pg";
-import { getDatabaseConfig } from "@/lib/config";
+import { getAppConfig, getDatabaseConfig } from "@/lib/config";
 
-let pool: Pool | null = null;
+type DbRow = Record<string, unknown>;
 
-export function getPool(): Pool {
-  if (!pool) {
-    const config = getDatabaseConfig();
-    pool = new Pool({
-      host: config.host,
-      port: config.port,
-      database: config.name,
-      user: config.user,
-      password: config.password,
-      max: config.pool_size,
-      connectionTimeoutMillis: config.connection_timeout,
-      idleTimeoutMillis: config.idle_timeout,
-    });
-
-    pool.on("error", (err) => {
-      console.error("Unexpected error on idle client", err);
-    });
-  }
-  return pool;
+interface DbResult<T = DbRow> {
+  rows: T[];
+  rowCount: number | null;
 }
 
-export async function query<T extends QueryResultRow = QueryResultRow>(
+let useSQLite: boolean | null = null;
+
+function shouldUseSQLite(): boolean {
+  if (useSQLite === null) {
+    const dbConfig = getDatabaseConfig();
+    useSQLite = dbConfig.type === "sqlite";
+  }
+  return useSQLite;
+}
+
+export async function query<T extends DbRow = DbRow>(
   text: string,
   params?: unknown[]
-): Promise<QueryResult<T>> {
-  const pool = getPool();
-  return pool.query<T>(text, params);
-}
-
-export async function getClient(): Promise<PoolClient> {
-  const pool = getPool();
-  return pool.connect();
-}
-
-export async function transaction<T>(
-  callback: (client: PoolClient) => Promise<T>
-): Promise<T> {
-  const client = await getClient();
-  try {
-    await client.query("BEGIN");
-    const result = await callback(client);
-    await client.query("COMMIT");
-    return result;
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
+): Promise<DbResult<T>> {
+  if (shouldUseSQLite()) {
+    const { getDb } = await import("./sqlite");
+    const db = getDb();
+    
+    const stmt = db.prepare(text);
+    
+    if (text.trim().toUpperCase().startsWith("SELECT")) {
+      const rows = stmt.all(...(params || [])) as T[];
+      return { rows, rowCount: rows.length };
+    } else if (text.trim().toUpperCase().startsWith("INSERT")) {
+      const info = stmt.run(...(params || []));
+      const tableName = text.match(/INSERT INTO (\w+)/i)?.[1];
+      if (tableName && params && params.length > 0) {
+        const idStmt = db.prepare(`SELECT * FROM ${tableName} WHERE id = ?`);
+        const row = idStmt.get(params[0]) as T | undefined;
+        return { rows: row ? [row] : [], rowCount: info.changes };
+      }
+      return { rows: [], rowCount: info.changes };
+    } else if (text.trim().toUpperCase().startsWith("UPDATE")) {
+      const info = stmt.run(...(params || []));
+      return { rows: [], rowCount: info.changes };
+    } else if (text.trim().toUpperCase().startsWith("DELETE")) {
+      const info = stmt.run(...(params || []));
+      return { rows: [], rowCount: info.changes };
+    } else {
+      const rows = stmt.all(...(params || [])) as T[];
+      return { rows, rowCount: rows.length };
+    }
+  } else {
+    const { getPool } = await import("./pg-client");
+    const pool = getPool();
+    const result = await pool.query<T>(text, params);
+    return {
+      rows: result.rows,
+      rowCount: result.rowCount,
+    };
   }
 }
 
-export async function closePool(): Promise<void> {
-  if (pool) {
-    await pool.end();
-    pool = null;
+export function generateId(): string {
+  const { getAppConfig } = require("@/lib/config");
+  const crypto = require("crypto");
+  return crypto.randomUUID();
+}
+
+export async function closeConnections(): Promise<void> {
+  if (shouldUseSQLite()) {
+    const { closeDb } = await import("./sqlite");
+    closeDb();
+  } else {
+    const { closePool } = await import("./pg-client");
+    await closePool();
   }
-}
-
-export function buildWhereClause(
-  conditions: Record<string, unknown>
-): { clause: string; values: unknown[] } {
-  const keys = Object.keys(conditions).filter(
-    (key) => conditions[key] !== undefined && conditions[key] !== null
-  );
-  const values = keys.map((key) => conditions[key]);
-  const clause = keys
-    .map((key, index) => `${key} = $${index + 1}`)
-    .join(" AND ");
-  return { clause, values };
-}
-
-export function buildInsertQuery<T extends Record<string, unknown>>(
-  table: string,
-  data: T
-): { text: string; values: unknown[] } {
-  const keys = Object.keys(data);
-  const values = Object.values(data);
-  const placeholders = keys.map((_, index) => `$${index + 1}`).join(", ");
-  const columns = keys.join(", ");
-
-  const text = `INSERT INTO ${table} (${columns}) VALUES (${placeholders}) RETURNING *`;
-  return { text, values };
-}
-
-export function buildUpdateQuery<T extends Record<string, unknown>>(
-  table: string,
-  data: Partial<T>,
-  whereClause: string,
-  whereValues: unknown[]
-): { text: string; values: unknown[] } {
-  const keys = Object.keys(data);
-  const setClause = keys
-    .map((key, index) => `${key} = $${index + 1}`)
-    .join(", ");
-  const values = [...Object.values(data), ...whereValues];
-
-  const text = `UPDATE ${table} SET ${setClause} WHERE ${whereClause} RETURNING *`;
-  return { text, values };
 }
