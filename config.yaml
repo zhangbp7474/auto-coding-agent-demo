@@ -1,0 +1,141 @@
+# AI视频项目配置文件
+# 请根据您的实际情况填写以下配置项
+
+# ============================================================================
+# 火山引擎配置
+# ============================================================================
+
+volc_engine:
+  # 火山引擎API密钥（必填）
+  api_key: "818d60b1-891b-49d6-bb6d-621314164100"
+
+  # 文本模型配置（用于故事→分镜）
+  text:
+    model: "doubao-seed-2-0-mini-260215"
+    endpoint: "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
+    temperature: 0.7
+    max_tokens: 4096
+
+  # 图像模型配置（用于生成分镜图片）
+  image:
+    model: "doubao-seedream-4-5-251128"
+    endpoint: "https://ark.cn-beijing.volces.com/api/v3/images/generations"
+    default_size: "2K"
+    watermark: false
+
+  # 视频模型配置（用于生成分镜视频）
+  video:
+    model: "doubao-seedance-1-5-pro-251215"
+    endpoint: "https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks"
+    default_duration: 5
+    watermark: false
+
+# ============================================================================
+# 数据库配置
+# ============================================================================
+
+database:
+  # 数据库主机地址
+  host: "localhost"
+
+  # 数据库端口
+  port: 5432
+
+  # 数据库名称
+  name: "ai_video_db"
+
+  # 数据库用户名
+  user: "postgres"
+
+  # 数据库密码（必填）
+  password: "1qaz2wsx"
+
+  # 连接池大小
+  pool_size: 10
+
+  # 连接超时时间（毫秒）
+  connection_timeout: 10000
+
+  # 空闲连接超时时间（毫秒）
+  idle_timeout: 30000
+
+# ============================================================================
+# JWT配置
+# ============================================================================
+
+jwt:
+  # JWT签名密钥（必填，建议使用随机字符串，至少32位）
+  secret: "071717c0-c6d6-4219-aa71-805acc2f9547"
+
+  # Token过期时间（例如：7d表示7天，24h表示24小时）
+  expires_in: "7d"
+
+  # Token签发者
+  issuer: "ai-video-app"
+
+  # Token受众
+  audience: "ai-video-users"
+
+# ============================================================================
+# 应用配置
+# ============================================================================
+
+app:
+  # 应用名称
+  name: "AI Video Generator"
+
+  # 应用端口
+  port: 3000
+
+  # 本地文件存储路径
+  storage_path: "./storage"
+
+  # 最大文件上传大小（MB）
+  max_file_size_mb: 100
+
+  # 允许的图片格式
+  allowed_image_formats:
+    - "jpg"
+    - "jpeg"
+    - "png"
+    - "webp"
+
+  # 允许的视频格式
+  allowed_video_formats:
+    - "mp4"
+    - "webm"
+
+  # 开发模式
+  development: true
+
+  # 日志级别（debug, info, warn, error）
+  log_level: "info"
+
+# ============================================================================
+# CORS配置
+# ============================================================================
+
+cors:
+  # 允许的源（开发环境使用*，生产环境请指定具体域名）
+  allowed_origins:
+    - "http://localhost:3000"
+    - "http://127.0.0.1:3000"
+
+  # 允许的HTTP方法
+  allowed_methods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "PATCH"
+    - "DELETE"
+
+  # 允许的请求头
+  allowed_headers:
+    - "Content-Type"
+    - "Authorization"
+
+  # 允许发送凭证
+  allow_credentials: true
+
+  # 预检请求缓存时间（秒）
+  max_age: 86400
