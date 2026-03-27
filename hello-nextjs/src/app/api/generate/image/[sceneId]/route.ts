@@ -88,8 +88,19 @@ export async function POST(request: Request, { params }: RouteParams) {
     console.error("Error generating image:", error);
 
     if (error instanceof VolcImageApiError) {
+      console.error("VolcImageApiError details:", {
+        message: error.message,
+        statusCode: error.statusCode,
+        errorCode: error.errorCode
+      });
       return NextResponse.json(
-        { error: `Image generation error: ${error.message}` },
+        {
+          error: `Image generation error: ${error.message}`,
+          details: {
+            statusCode: error.statusCode,
+            errorCode: error.errorCode
+          }
+        },
         { status: 502 }
       );
     }
@@ -98,8 +109,11 @@ export async function POST(request: Request, { params }: RouteParams) {
       return NextResponse.json({ error: error.message }, { status: 404 });
     }
 
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error("Unexpected error:", errorMessage, error);
+
     return NextResponse.json(
-      { error: "Failed to generate image" },
+      { error: `Failed to generate image: ${errorMessage}` },
       { status: 500 }
     );
   }

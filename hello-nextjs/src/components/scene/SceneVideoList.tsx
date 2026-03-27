@@ -12,6 +12,30 @@ interface SceneVideoListProps {
   scenes: SceneWithMedia[];
 }
 
+interface ApiError {
+  error: string;
+  details?: string;
+}
+
+function getUserFriendlyVideoError(error: string | undefined, status: number): string {
+  if (!error) return "视频生成失败，请稍后重试";
+
+  if (error.includes("resource download failed")) {
+    return "图片无法访问，请确保服务器可通过公网访问后再试";
+  }
+  if (error.includes("image_url")) {
+    return "图片格式错误，请重新生成图片";
+  }
+  if (error.includes("not configured")) {
+    return "视频生成服务未配置，请联系管理员";
+  }
+  if (error.includes("not found")) {
+    return "找不到指定的图片或场景";
+  }
+
+  return error;
+}
+
 /**
  * Scene video list component.
  * Displays all scenes with their videos and bulk actions.
@@ -20,6 +44,7 @@ export function SceneVideoList({ projectId, scenes }: SceneVideoListProps) {
   const [localScenes, setLocalScenes] = useState(scenes);
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
   const [isConfirmingAll, setIsConfirmingAll] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Resume polling for any videos that are still processing when component mounts
   useEffect(() => {
@@ -27,15 +52,13 @@ export function SceneVideoList({ projectId, scenes }: SceneVideoListProps) {
       if (scene.video_status === "processing" && scene.videos.length > 0) {
         const latestVideo = scene.videos[scene.videos.length - 1];
         if (latestVideo.task_id) {
-          // Resume polling for this video
           pollForVideoCompletion(scene.id, latestVideo.task_id, latestVideo.id);
         }
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run on mount
+  }, []);
 
-  // Collect all storage paths for images and videos
   const storagePaths = useMemo(() => {
     const paths: string[] = [];
     localScenes.forEach((scene) => {
@@ -49,7 +72,6 @@ export function SceneVideoList({ projectId, scenes }: SceneVideoListProps) {
     return paths;
   }, [localScenes]);
 
-  // Fetch signed URLs for all media
   const { urls: signedUrls } = useSignedUrls({ paths: storagePaths });
 
   const confirmedCount = localScenes.filter((s) => s.video_confirmed).length;
@@ -60,6 +82,8 @@ export function SceneVideoList({ projectId, scenes }: SceneVideoListProps) {
   const canConfirmAll = completedCount === localScenes.length && !allConfirmed;
 
   const handleGenerateVideo = async (sceneId: string) => {
+    setError(null);
+
     const response = await fetch(`/api/generate/video/scene/${sceneId}`, {
       method: "POST",
       headers: {
@@ -69,21 +93,34 @@ export function SceneVideoList({ projectId, scenes }: SceneVideoListProps) {
     });
 
     if (!response.ok) {
-      const data = await response.json();
-      throw new Error(data.error ?? "Failed to generate video");
+      let errorMessage = "Failed to generate video";
+      try {
+        const data: ApiError = await response.json();
+        errorMessage = getUserFriendlyVideoError(data.error, response.status);
+        console.error("Video generation error:", {
+          status: response.status,
+          error: data.error,
+          details: data.details,
+          friendlyMessage: errorMessage,
+        });
+      } catch {
+        console.warn("Failed to parse error response");
+      }
+      setError(errorMessage);
+      return;
     }
 
     const data = await response.json();
     const { taskId, videoId } = data;
 
-    // Update local state to show processing
+    console.log("Video task created:", taskId);
+
     setLocalScenes((prev) =>
       prev.map((s) =>
         s.id === sceneId ? { ...s, video_status: "processing" } : s
       )
     );
 
-    // Poll for completion using task status API
     pollForVideoCompletion(sceneId, taskId, videoId);
   };
 
@@ -225,6 +262,39 @@ export function SceneVideoList({ projectId, scenes }: SceneVideoListProps) {
 
   return (
     <div className="space-y-4">
+      {/* Error Message */}
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+          <div className="flex items-center gap-2">
+            <svg
+              className="h-5 w-5 flex-shrink-0"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <span>{error}</span>
+          </div>
+          {error.includes("公网访问") && (
+            <div className="mt-2 text-xs">
+              <p>提示：视频生成需要公网可访问的图片URL。请使用 ngrok 或类似工具将本地服务暴露到公网。</p>
+            </div>
+          )}
+          <button
+            onClick={() => setError(null)}
+            className="mt-2 text-xs underline hover:no-underline"
+          >
+            关闭
+          </button>
+        </div>
+      )}
+
       {/* Progress */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">

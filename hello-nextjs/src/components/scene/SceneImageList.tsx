@@ -12,6 +12,36 @@ interface SceneImageListProps {
   scenes: SceneWithImages[];
 }
 
+function getUserFriendlyErrorMessage(error: string | undefined, status: number): string {
+  if (!error) return "图片生成失败，请稍后重试";
+
+  if (status === 400) {
+    if (error.includes("Project ID is required")) {
+      return "项目信息缺失，请刷新页面后重试";
+    }
+    if (error.includes("Scene description must be confirmed")) {
+      return "请先确认分镜描述后再生成图片";
+    }
+    if (error.includes("Scene does not belong")) {
+      return "分镜不属于当前项目";
+    }
+  }
+  if (status === 401) {
+    return "请先登录后再操作";
+  }
+  if (status === 403) {
+    return "您没有权限执行此操作";
+  }
+  if (status === 404) {
+    return "未找到相关资源";
+  }
+  if (status === 503) {
+    return "图片生成服务未配置，请联系管理员";
+  }
+
+  return error;
+}
+
 /**
  * Scene image list component.
  * Displays all scenes with their images and bulk actions.
@@ -20,6 +50,7 @@ export function SceneImageList({ projectId, scenes }: SceneImageListProps) {
   const [localScenes, setLocalScenes] = useState(scenes);
   const [isGeneratingAll, setIsGeneratingAll] = useState(false);
   const [isConfirmingAll, setIsConfirmingAll] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Resume polling for any images that are still processing when component mounts
   useEffect(() => {
@@ -50,13 +81,26 @@ export function SceneImageList({ projectId, scenes }: SceneImageListProps) {
   const canConfirmAll = completedCount === localScenes.length && !allConfirmed;
 
   const handleGenerateImage = async (sceneId: string) => {
+    setError(null);
+
     const response = await fetch(`/api/generate/image/${sceneId}`, {
       method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ projectId }),
     });
 
     if (!response.ok) {
       const data = await response.json();
-      throw new Error(data.error ?? "Failed to generate image");
+      const friendlyMessage = getUserFriendlyErrorMessage(data.error, response.status);
+      setError(friendlyMessage);
+      console.error("Error generating image:", {
+        status: response.status,
+        error: data.error,
+        friendlyMessage,
+      });
+      return;
     }
 
     // Update local state to show processing
@@ -183,6 +227,34 @@ export function SceneImageList({ projectId, scenes }: SceneImageListProps) {
 
   return (
     <div className="space-y-4">
+      {/* Error Message */}
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-600 dark:border-red-800 dark:bg-red-900/20 dark:text-red-400">
+          <div className="flex items-center gap-2">
+            <svg
+              className="h-5 w-5 flex-shrink-0"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+            <span>{error}</span>
+          </div>
+          <button
+            onClick={() => setError(null)}
+            className="mt-2 text-xs underline hover:no-underline"
+          >
+            关闭
+          </button>
+        </div>
+      )}
+
       {/* Progress */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">

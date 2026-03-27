@@ -6,6 +6,11 @@ interface DraftStageViewProps {
   projectId: string;
 }
 
+interface ApiError {
+  error: string;
+  details?: string;
+}
+
 /**
  * Draft stage view component.
  * Displays the "Generate Scenes" button and handles scene generation.
@@ -28,11 +33,29 @@ export function DraftStageView({ projectId }: DraftStageViewProps) {
       });
 
       if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error ?? "Failed to generate scenes");
+        let errorMessage = "Failed to generate scenes";
+        let errorDetails = "";
+
+        try {
+          const data: ApiError = await response.json();
+          errorMessage = data.error || errorMessage;
+          if (data.details) {
+            errorDetails = data.details;
+          }
+        } catch {
+          console.warn("Failed to parse error response");
+        }
+
+        console.error("Error generating scenes:", {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorMessage,
+          details: errorDetails
+        });
+
+        throw new Error(errorMessage);
       }
 
-      // Refresh the page to show the generated scenes
       window.location.reload();
     } catch (err) {
       console.error("Error generating scenes:", err);

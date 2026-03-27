@@ -67,7 +67,7 @@ interface GetTaskResponse {
 }
 
 export async function createVideoTask(
-  imageUrl: string,
+  imageData: string,
   prompt?: string,
   options: {
     duration?: number;
@@ -83,6 +83,15 @@ export async function createVideoTask(
   const watermark = options.watermark ?? config.video.watermark;
   const fullPrompt = `${prompt ?? ""} --duration ${duration} --camerafixed false --watermark ${watermark}`;
 
+  const isBase64 = imageData.startsWith('data:') || /^[A-Za-z0-9+/=]+$/.test(imageData);
+
+  let imageUrlContent: string;
+  if (isBase64) {
+    imageUrlContent = imageData;
+  } else {
+    imageUrlContent = imageData;
+  }
+
   const requestBody = {
     model: config.video.model,
     content: [
@@ -93,7 +102,7 @@ export async function createVideoTask(
       {
         type: "image_url",
         image_url: {
-          url: imageUrl,
+          url: imageUrlContent,
         },
       },
     ],

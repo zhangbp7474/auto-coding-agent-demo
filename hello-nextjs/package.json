@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "npm run copy-dev-tools && next dev",
+    "dev:watch": "node scripts/dev-live-sync.js",
+    "copy-dev-tools": "node scripts/setup-dev-tools.js",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

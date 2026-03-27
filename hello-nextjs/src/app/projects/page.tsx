@@ -1,4 +1,3 @@
-import { Header } from "@/components/layout/Header";
 import { ProjectCard } from "@/components/project/ProjectCard";
 import { getCurrentUser } from "@/lib/auth/session";
 import { getProjectsWithPreview } from "@/lib/db/projects-list";
@@ -34,19 +33,17 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
   const hasPrevPage = currentPage > 1;
 
   return (
-    <div className="flex min-h-screen flex-col bg-zinc-50 dark:bg-zinc-950">
-      <Header user={user} />
-      <main className="flex flex-1 flex-col px-4 py-8">
-        <div className="mx-auto w-full max-w-6xl">
-          <div className="mb-8 flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100">
-                我的项目
-              </h1>
-              <p className="mt-1 text-zinc-600 dark:text-zinc-400">
-                共 {total} 个项目
-              </p>
-            </div>
+    <main className="flex flex-1 flex-col px-4 py-8">
+      <div className="mx-auto w-full max-w-6xl">
+        <div className="mb-8 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-zinc-900 dark:text-zinc-100">
+              我的项目
+            </h1>
+            <p className="mt-1 text-zinc-600 dark:text-zinc-400">
+              共 {total} 个项目
+            </p>
+          </div>
             <Link
               href="/create"
               className="flex h-11 items-center gap-2 rounded-lg bg-zinc-900 px-5 text-sm font-medium text-zinc-50 transition-colors hover:bg-zinc-800 dark:bg-zinc-50 dark:text-zinc-900 dark:hover:bg-zinc-200"
@@ -150,6 +147,5 @@ export default async function ProjectsPage({ searchParams }: ProjectsPageProps) 
           )}
         </div>
       </main>
-    </div>
   );
 }

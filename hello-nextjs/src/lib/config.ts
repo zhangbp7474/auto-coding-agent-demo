@@ -106,7 +106,7 @@ export function getConfig(): Config {
     volc_engine: {
       api_key: getEnvString("VOLC_API_KEY", ""),
       text: {
-        model: getEnvString("VOLC_TEXT_MODEL", "doubao-seed-1.6"),
+        model: getEnvString("VOLC_TEXT_MODEL", "doubao-seed-2-0-lite-260215"),
         endpoint: getEnvString(
           "VOLC_TEXT_ENDPOINT",
           "https://ark.cn-beijing.volces.com/api/v3/chat/completions"
